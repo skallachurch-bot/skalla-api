@@ -65,4 +65,3 @@ def send_message(to, text):
 
     response = requests.post(url, headers=headers, json=data)
     print("RESPOSTA META:", response.text)
-
