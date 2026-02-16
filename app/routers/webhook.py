@@ -1,60 +1,68 @@
 from fastapi import APIRouter, Request, HTTPException
-from fastapi.responses import PlainTextResponse
+from fastapi.responses import JSONResponse
 import os
-import json
+import requests
 
 router = APIRouter()
 
-# Token de verificação do Meta
 VERIFY_TOKEN = os.getenv("WHATSAPP_VERIFY_TOKEN")
+WHATSAPP_TOKEN = os.getenv("WHATSAPP_TOKEN")
+PHONE_NUMBER_ID = os.getenv("PHONE_NUMBER_ID")
 
 
-# ==============================
-# 🔹 VERIFICAÇÃO DO META (GET)
-# ==============================
-@router.get("/", response_class=PlainTextResponse)
+@router.get("/")
 async def verify_webhook(request: Request):
     mode = request.query_params.get("hub.mode")
     token = request.query_params.get("hub.verify_token")
     challenge = request.query_params.get("hub.challenge")
 
     if mode == "subscribe" and token == VERIFY_TOKEN:
-        return challenge  # Meta exige retorno puro
+        return JSONResponse(content=int(challenge))
 
     raise HTTPException(status_code=403, detail="verification_failed")
 
 
-# ==============================
-# 🔹 RECEBER MENSAGEM (POST)
-# ==============================
 @router.post("/")
-async def receive_message(request: Request):
+async def webhook(request: Request):
     body = await request.json()
 
-    print("\n========== WEBHOOK RECEBIDO ==========")
-    print(json.dumps(body, indent=2))
-    print("======================================")
+    print("==== WEBHOOK RECEBIDO ====")
+    print(body)
+    print("==========================")
 
     try:
-        # Verifica se existe mensagem
-        if (
-            "entry" in body
-            and body["entry"]
-            and "changes" in body["entry"][0]
-            and body["entry"][0]["changes"]
-            and "messages" in body["entry"][0]["changes"][0]["value"]
-        ):
+        entry = body["entry"][0]
+        changes = entry["changes"][0]
+        value = changes["value"]
 
-            message = body["entry"][0]["changes"][0]["value"]["messages"][0]
+        if "messages" in value:
+            message = value["messages"][0]
+            from_number = message["from"]
+            text = message["text"]["body"]
 
-            numero = message.get("from")
-            texto = message.get("text", {}).get("body")
-
-            print(f"\n📱 NUMERO: {numero}")
-            print(f"💬 TEXTO: {texto}")
+            send_message(from_number, f"Recebi: {text}")
 
     except Exception as e:
-        print("Erro ao processar mensagem:")
-        print(e)
+        print("ERRO:", e)
 
     return {"status": "ok"}
+
+
+def send_message(to, text):
+    url = f"https://graph.facebook.com/v19.0/{PHONE_NUMBER_ID}/messages"
+
+    headers = {
+        "Authorization": f"Bearer {WHATSAPP_TOKEN}",
+        "Content-Type": "application/json"
+    }
+
+    data = {
+        "messaging_product": "whatsapp",
+        "to": to,
+        "type": "text",
+        "text": {"body": text}
+    }
+
+    response = requests.post(url, headers=headers, json=data)
+    print("RESPOSTA META:", response.text)
+
